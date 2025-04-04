@@ -1,0 +1,160 @@
+---
+title: "initial_script"
+author: "Martine Lind Jensen"
+date: "2025-03-20"
+output: html_document
+---
+```{r}
+pacman::p_load(tidyverse, readxl, lme4, lmerTest)
+```
+
+
+
+```{r loading data}
+df <- read_excel("data_for_analysis/Data3.xlsx")
+```
+
+#Functions
+
+```{r function forced choice make numeric}
+make_num <- function(df) {
+  df[df == "H"] <- 1 
+  df[df == "E"] <- -1
+  df[is.na(df)] <- 0
+  return(df)
+}
+
+df_try <- df
+
+df_try <- df_try %>% mutate_at(c("first_forced", "second_forced", "third_forced"), make_num)
+```
+
+
+```{r function make df as.numeric}
+as_num <- function(df)  {
+  df <- as.numeric(df)
+}
+```
+
+#Messing around 
+
+```{r simple analysis - can be removed}
+simple <- df_try
+
+simple <- df_try %>% mutate(
+  E_first = ifelse(first_pref == "E", rate_first_cho, rate_first_not), 
+  H_first = ifelse(first_pref == "H", rate_first_cho, rate_first_not),
+  E_second = ifelse(second_pref == "E", rate_second_cho, rate_second_not), 
+  H_second = ifelse(second_pref == "H", rate_second_cho, rate_second_not),
+  E_third = ifelse(third_pref == "E", rate_third_cho, rate_third_not), 
+  H_third = ifelse(third_pref == "H", rate_third_cho, rate_third_not),
+  E_fourth = ifelse(fourth_pref == "E", rate_fourth_cho, rate_fourth_not), 
+  H_fourth = ifelse(fourth_pref == "H", rate_fourth_cho, rate_fourth_not)
+) %>%  select(c("ID", "Age(months)", "Gender", "E_first", "H_first", "E_second", "H_second", "E_third", "H_third", "E_fourth", "H_fourth"))
+
+simple1 <- simple %>% select(c("ID", "Age(months)", "Gender", "E_first", "H_first")) %>% rename( "E" ="E_first", "H" = "H_first")
+
+simple2 <- simple %>% select(c("ID", "Age(months)", "Gender", "E_second", "H_second")) %>% rename( "E" ="E_second", "H"= "H_second")
+
+simple3 <- simple %>% select(c("ID", "Age(months)", "Gender", "E_third", "H_third")) %>% rename( "E" ="E_third", "H" = "H_third")
+
+simple4 <- simple %>% select(c("ID", "Age(months)", "Gender", "E_fourth", "H_fourth")) %>% rename( "E" ="E_fourth", "H" = "H_fourth")
+
+simple_full <- rbind(simple1, simple2, simple3, simple4)  %>% mutate_at(c("E", "H"), as_num) %>% drop_na()
+
+summary(lmer(H~E + (1|ID), simple_full))
+
+```
+
+```{r}
+ggplot(df, aes(`Age(months)`, first_smiley)) +
+  geom_point()
+
+
+ggplot(simple_full) +
+  #geom_bar(aes(E)) + 
+  geom_bar(aes(H))
+
+ggplot(simple_full) +
+  geom_boxplot(aes(E)) + 
+  geom_boxplot(aes(H))
+
+
+ggplot(simple_full, aes(E, H))+ 
+  geom_line()
+```
+
+```{r}
+ggplot(final_df, aes(Diff, Rating)) + 
+  geom_boxplot()
+
+ggplot(final_df, aes(Forced_choice_trial)) + 
+  geom_bar()
+
+ggplot(final_df, aes(Rating, Diff)) + 
+  geom_boxplot() + 
+  facet_wrap(~Trial)
+
+ggplot(final_df, aes(Rating, Time)) + 
+  geom_smooth() # + 
+  #facet_wrap(~Trial)
+```
+
+```{r}
+summary(lmer(Rating~Diff + Base_smiley +  (1|ID), final_df))
+```
+
+
+#Make dataframe ready for linear modelling
+- part 1 and part 2 
+```{r part 1 function for cleaning data per trial}
+
+addtrial <- function(df, trial) {
+  t1 <- ifelse(trial == 1, "first", ifelse(trial == 2, "second", ifelse(trial == 3, "third", ifelse(trial == 4, "fourth", "x"))))
+  t2_cho <- ifelse(trial == 1, 1, ifelse(trial == 2, 3, ifelse(trial == 3, 5, ifelse(trial == 4, 7, "x"))))
+  t2_not <- ifelse(trial == 1, 2, ifelse(trial == 2, 4, ifelse(trial == 3, 6, ifelse(trial == 4, 8, "x"))))
+  
+  pref <- select(df, starts_with(t1) & ends_with("pref"))
+
+  pref_inv <- ifelse(pref == "E", "H", ifelse(pref == "H", "E", NA))
+  
+  selected_cho1 <- df %>% 
+    select(c("ID", "Age", "Gender", "Base_smiley"), contains(c(t1, t2_cho))) %>% 
+    select(-contains("not")) %>% 
+    add_column(Puzzle_no = t2_cho)
+  
+  selected_cho <- cbind(selected_cho1,pref)
+  
+  selected_not1 <- df %>% 
+    select(c("ID", "Age", "Gender", "Base_smiley"), contains(c(t1, t2_not))) %>% 
+    select(-contains("cho")) %>% 
+    add_column(Puzzle_no = t2_not)
+  
+  selected_not <- cbind(selected_not1,pref_inv)
+  
+  colnames(selected_cho) <- c("ID", "Age", "Gender", "Base_smiley", "Pref_trial", "Time", "Rating", "Forced_choice_trial", "Start", "End", "Time_hms", "Puzzle_no", "Diff")
+  
+  colnames(selected_not) <- c("ID", "Age", "Gender", "Base_smiley", "Pref_trial", "Time", "Rating", "Forced_choice_trial", "Start", "End", "Time_hms", "Puzzle_no", "Diff")  
+  new_df <- rbind(selected_cho, selected_not) %>% 
+    add_column(Trial = trial)
+  
+  return(new_df)
+}
+
+#df1 <- addtrial(df, 1)
+```
+
+```{r part 2 run through all 4 trials}
+df_list <- list()
+
+# Loop through trials 1 to 4
+for (i in 1:4) {
+  df_list[[i]] <- addtrial(df, i)
+}
+
+# Combine all dataframes
+final_df <- do.call(rbind, df_list)
+
+final_df <- final_df %>% mutate_at(c("Rating", "Base_smiley", "Time"), as_num)
+```
+

@@ -1,0 +1,120 @@
+---
+title: "analysis"
+author: "Martine Lind Jensen"
+date: "2025-04-01"
+output: html_document
+---
+```{r}
+pacman::p_load(brms, tidyverse)
+```
+
+```{r}
+data <- final_df
+```
+
+#Modelling rating 
+
+Rating is in itself a likert scale that we assume to be a categorization of a latent continuous variable (enjoyment).Therefore, rating should be modelled with an cumulative ordinal logistic regression.
+
+```{r data for modeling rating}
+data_rating <- data %>% select(-c("Forced_choice_trial")) %>% drop_na()
+```
+
+```{r}
+priors_rating <- c(prior(normal(0,2), class = b))
+```
+
+```{r}
+
+##This model converges fine. Here we assume that there are no effect of puzzle no and that the puzzles are the same across trials. This could be argued to be a appropriate model as we have few observations (we need to limit complexity) and that we assume that there are no effects of the different puzzle as they should be the same diff. It could be argued that the there might be a fatigue or learning effect over time, that could be modeled as a fixed effect instead (puzzle no 1-8).
+fit1 <- brm(
+  formula = Rating ~ 1 + Diff + (1|ID), 
+  data = data_rating, 
+  prior = priors_rating,
+  sample_prior = T, 
+  chains = 4, 
+  cores = 2, 
+  family = cumulative("probit")#, 
+  #control = list(adapt_delta = 0.9), 
+  #set_prior("normal(0, 2)", class = "b")
+) 
+
+fit1_prior <- brm(
+  formula = Rating ~ 1 + Diff + (1|ID), 
+  data = data_rating, 
+  family = cumulative("probit"), 
+  sample_prior = "only", 
+  #control = list(adapt_delta = 0.9), 
+  set_prior("normal(0, 2)", class = "b")
+) 
+
+fit1p <- brm(
+  formula = Rating ~ 1 + Diff + (1|ID) + (1|Puzzle_no), 
+  data = data_rating, 
+  family = cumulative("probit")#, 
+  #control = list(adapt_delta = 0.9), 
+  #set_prior("normal(0, 2)", class = "b")
+) 
+
+fit0 <- brm(
+  formula = Rating ~ 1 + (1|ID), 
+  data = data_rating, 
+  family = cumulative("probit")
+) 
+
+fitdisc <- brm(
+  formula = bf(Rating ~ 1 + Diff + (1|ID) + (1|Trial)) + 
+    lf(disc ~ 0 + Diff + (1|ID) + (1|Trial), cmc = FALSE), 
+  data = data_rating, 
+  family = cumulative("probit"), 
+  control = list(adapt_delta = 0.9), 
+  set_prior("normal(0, 2)", class = "b")
+) 
+
+
+fitadc <- brm(
+  formula = Rating ~ 1 + Diff + (1|ID) + (1|Trial), 
+  data = data_rating, 
+  family = acat("probit"), 
+  control = list(adapt_delta = 0.9), 
+  set_prior("normal(0, 2)", class = "b")
+) 
+```
+
+```{r}
+summary(fit1p)
+
+plot(fit1)
+
+brms::pp_check(fit0, ndraws = 100)
+
+conditional_effects(fit1p, "Diff", categorical = TRUE)
+
+brms::pairs(fit1)
+
+
+```
+
+
+```{r}
+library(bayesplot)
+
+# Extract prior samples
+prior_draws <- as_draws_df(fit1_prior)
+
+# Extract posterior samples
+posterior_draws <- as_draws_df(fit1)
+
+mcmc_dens_overlay(
+  list(Prior = prior_draws$b_DiffH, Posterior = posterior_draws$b_DiffH)
+)
+```
+
+```{r}
+ggplot(posterior_draws) +
+  geom_density(aes(prior_b), fill="steelblue", color="black",alpha=0.6) +
+  geom_density(aes(b_DiffH), fill="#FC4E07", color="black",alpha=0.6) + 
+  xlab('b') +
+  theme_classic()
+```
+
