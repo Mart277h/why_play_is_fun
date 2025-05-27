@@ -7,7 +7,9 @@ The purpose of this thesis is to investigate why play is fun and how expectation
 Data from the thesis is not available, though all code for the preprocessing and analysis are available. 
 
 Code for Experimental Design Evaluation analysis is found in Smiley_scale_analysis.Rmd
+
 Code for Enjoyment Rating Analysis is found in Rating_analysis.Rmd
+
 Code for Preference Choice Analysis is found in Choice_analysis.Rmd
 
 Preprocessing was done in data_preprocessing.Rmd 
