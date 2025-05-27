@@ -1,0 +1,566 @@
+---
+title: "Rating_analysis"
+author: "Martine Lind Jensen"
+date: "2025-04-10"
+output: html_document
+---
+```{r loading packages}
+pacman::p_load(brms, tidyverse, ordinal, lmerTest, MASS, ggeffects)
+```
+
+```{r loading data}
+data <- read_csv("data_for_analysis/why_play_is_fun_data2.csv") %>% dplyr::select(-c("...1"))
+
+data_rating <- data %>% dplyr::select(-c("Forced_choice_trial")) %>% drop_na()
+```
+
+When adding the information of the forced choice to our rating, we get more precise estimates of the childs preferences. 
+```{r}
+
+#Forced choice when ratings are 1 put to 1 + 2 
+data_fcrating <- data %>% 
+  mutate(
+    Forced_choice_trial = ifelse(is.na(Forced_choice_trial), "NA", Forced_choice_trial),
+    Rating_fc = as.factor(ifelse(Rating == 1 & Diff == "E" & Forced_choice_trial == "E", Rating + 1,
+                       ifelse(Rating == 1 & Diff == "H" & Forced_choice_trial == "H", Rating + 1,
+                              ifelse(Rating > 1 & Forced_choice_trial == "H" & Diff == "E", Rating - 1,
+                                     ifelse(Rating > 1 & Forced_choice_trial == "E" & Diff == "H", Rating - 1, Rating))))), 
+    Rating = as.factor(Rating),
+    Diff = as.factor(Diff), 
+    Gender = as.factor(Gender)) %>% 
+  drop_na()
+
+
+```
+
+
+#Modeling Rating 
+
+```{r}
+#Null model to compare 
+null <- clmm(Rating ~ 1 + (1|ID), data = data_fcrating)
+
+#Main effect of difficulty 
+diff <- clmm(Rating ~ 1 + Diff + (1|ID), data = data_fcrating)
+
+time <- clmm(Rating ~ 1 + Diff + Time + (1|ID), data = data_fcrating)
+#Possible effect of general rating of puzzles
+diff_base <- clmm(factor(Rating) ~ 1 + Diff + Base_smiley + (1|ID), data = data_rating)
+
+#Possible effect of descriptive parameters 
+diff_base_descr <-  clmm(factor(Rating) ~ 1 + factor(Diff) + Base_smiley + Gender + Age + (1|ID), data = data_rating)
+
+  #Removing age as it is non significant
+diff_base_descr_noage <-  clmm(Rating ~ 1 + Diff + Base_smiley + Gender + (1|ID), data = data_fcrating)
+
+#Possible effect of preference for the trial
+diff_base_descr_pref <-  clmm(factor(Rating) ~ 1+ Pref_trial+Diff + Base_smiley + Gender + Age +(1|ID), data = data_rating)
+
+diff_base_descr_puzz <-  clmm(factor(Rating) ~ 1+Diff + Base_smiley + Gender + Age + Puzzle_no +(1|ID), data = data_rating)
+
+ordinal:::anova.clm(null, diff, diff_base, diff_base_descr,diff_base_descr_pref, diff_base_descr_noage, diff_base_descr_puzz)
+```
+
+
+#Modeling Rating with forced choice 
+
+```{r}
+#Null model to compare 
+null_fc <- clmm(Rating_fc ~ 1 + (1|ID), data = data_fcrating)
+
+#Main effect of difficulty 
+diff_fc <- clmm(Rating_fc ~ 1 + Diff + (1|ID), data = data_fcrating)
+
+time_fc <- clmm(Rating_fc ~ 1 + Time + (1|ID), data = data_fcrating)
+#Possible effect of general rating of puzzles
+diff_base_fc <- clmm(factor(Rating_fc) ~ 1 + Diff + Base_smiley + (1|ID), data = data_fcrating)
+
+#Possible effect of descriptive parameters 
+diff_base_descr_fc <-  clmm(factor(Rating_fc) ~ 1 + factor(Diff) + Base_smiley + Gender + Age + (1|ID), data = data_fcrating)
+
+  #Removing age as it is non significant
+diff_base_descr_noage_fc <-  clmm(Rating_fc ~ 1 + Diff + Base_smiley + Gender + (1|ID), data = data_fcrating)
+
+#Possible effect of preference for the trial
+diff_base_descr_pref_fc <-  clmm(factor(Rating_fc) ~ 1+ Pref_trial+Diff + Base_smiley + Gender + Age +(1|ID), data = data_fcrating)
+
+diff_base_descr_puzz_fc <-  clmm(factor(Rating_fc) ~ 1+Diff + Base_smiley + Gender + Age + Puzzle_no +(1|ID), data = data_fcrating)
+
+ordinal:::anova.clm(null_fc, diff_fc, diff_base_fc, diff_base_descr_fc,diff_base_descr_pref_fc, diff_base_descr_noage_fc, diff_base_descr_puzz_fc)
+```
+
+
+```{r finished plots}
+ggpredictions <-  data.frame(ggpredict(diff_base_descr_noage, terms = c("Diff", "Gender")))
+
+ggpredictions$x = factor(ggpredictions$x)
+levels(ggpredictions$x) = c("E", "H")
+#colnames(ggpredictions)[c(1,6,7,8)] =c("Diff", "Rating", "Gender", "Base_smiley")
+colnames(ggpredictions)[c(1,6,7)] =c("Diff", "Rating", "Gender")
+ggpredictions
+
+#Finished plot ratings
+ggplot(ggpredictions, aes(x = Rating, y = predicted))+ 
+  geom_point(aes(color = Diff), size = 2, position =position_dodge(width = 0.5)) + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high, color = Diff), position = position_dodge(width = 0.5), width = 0.5) + 
+  theme_minimal() +
+  facet_wrap(.~Gender) +  
+  scale_color_manual(values=c("#00A08A", "#F2AD00")) + 
+  ggtitle("Rating of Puzzles by Gender") + 
+  ylab("Predicted Probability")
+
+#Need to plot base smiley
+ggpredictions_bs <-  data.frame(ggpredict(diff_base_descr_noage, terms = c("Base_smiley")))
+
+ggpredictions_bs$x = factor(ggpredictions_bs$x)
+levels(ggpredictions$x) = c("E", "H")
+#colnames(ggpredictions)[c(1,6,7,8)] =c("Diff", "Rating", "Gender", "Base_smiley")
+colnames(ggpredictions)[c(1,6,7)] =c("Diff", "Rating", "Gender")
+ggpredictions_bs
+
+#Finished plot ratings
+ggplot(ggpredictions_bs, aes(x = x, y = predicted))+ 
+  geom_point(aes(color = x), size = 2, position =position_dodge(width = 0.5)) + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high, color = x), position = position_dodge(width = 0.5), width = 0.5) + 
+  theme_minimal() +
+  #facet_wrap(.~Gender) +  
+  #scale_color_manual(values=c("#00A08A", "#F2AD00")) + 
+  ggtitle("Rating of puzzles by gender") + 
+  ylab("Predicted")
+```
+
+
+```{r finished plots fc}
+ggpredictions_fc <-  data.frame(ggpredict(diff_base_descr_noage_fc, terms = c("Diff", "Gender")))
+
+ggpredictions_fc$x = factor(ggpredictions_fc$x)
+levels(ggpredictions_fc$x) = c("E", "H")
+#colnames(ggpredictions_fc)[c(1,6,7,8)] =c("Diff", "Rating", "Gender", "Base_smiley")
+colnames(ggpredictions_fc)[c(1,6,7)] =c("Diff", "Rating", "Gender")
+ggpredictions_fc
+
+
+#Finished plot ratings and forced choice
+ggplot(ggpredictions_fc, aes(x = Rating, y = predicted))+ 
+  geom_point(aes(color = Diff), size = 2, position =position_dodge(width = 0.5)) + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high, color = Diff), position = position_dodge(width = 0.5), width = 0.5) + 
+  theme_minimal() +
+  facet_wrap(.~Gender) +  
+  scale_color_manual(values=c( "#5BBCD6", "#F98400"))+ 
+  ggtitle("Rating Including Forced Choice of Puzzles by Gender") + 
+  ylab("Predicted Probability")
+
+
+```
+
+```{r}
+# Extract random effects
+ranef_values <- ranef(diff_base_descr_noage)$ID
+
+# Plot histogram
+hist(ranef_values$`(Intercept)`)#, main = "Histogram of Random Effects (ID)", xlab = "Random Intercepts")
+
+# Q-Q plot
+qqnorm(ranef_values$`(Intercept)`)
+qqline(ranef_values$`(Intercept)`)
+```
+
+```{r}
+# Extract random effects
+ranef_values_fc <- ranef(diff_base_descr_noage_fc)$ID
+
+# Plot histogram
+hist(ranef_values_fc$`(Intercept)`)#, main = "Histogram of Random Effects (ID)", xlab = "Random Intercepts")
+
+# Q-Q plot
+qqnorm(ranef_values_fc$`(Intercept)`)
+qqline(ranef_values_fc$`(Intercept)`)
+```
+
+
+
+## Code trash (and bayesian analysis)
+
+```{r}
+ggplot(data_rating, aes(Pref_trial, color = ID)) + 
+  geom_histogram(stat = "count")
+
+ggplot(data_rating, aes(Gender, Rating)) + 
+  geom_violin()
+
+ggplot(data_rating, aes(Base_smiley, Rating)) + 
+  geom_jitter()
+
+
+data_rating %>%  filter(Time<400) %>% ggplot(aes(Time, factor(Rating))) + 
+  geom_jitter(aes(color = ID)) + 
+  geom_smooth() + 
+  geom_boxplot()
+```
+
+```{r}
+ggpredict(diff_base_descr_noage, terms = c("Diff", "Gender"), condition = c(Diff = "H", Rating = "5")) %>%  plot()
+
+ggpredict(diff_base_descr_noage, terms = c("Base_smiley")) %>%  plot()
+
+prediction <- ggpredict(diff_base_descr_noage, terms = c("Diff"))
+
+prediction_fc <- ggpredict(diff_base_descr_noage_fc, terms = c("Diff"))
+prediction_fc %>% plot
+```
+
+```{r}
+data_fcrating %>% mutate(Rating = ordered(Rating, levels=rev(levels(Rating)))) %>% ggplot(aes(Diff, fill = Rating)) + 
+  geom_bar(position= "fill") + 
+  facet_grid(.~Gender)
+
+
+data_fcrating %>% mutate(Rating = ordered(Rating, levels=rev(levels(Rating)))) %>% ggplot(aes(Diff, fill = Rating)) + 
+  geom_bar(position= "fill") + 
+  facet_grid(.~Base_smiley)
+```
+
+
+```{r}
+ggpredictions <-  data.frame(ggpredict(diff_base_descr_noage, terms = c("Diff", "Gender")))
+
+ggpredictions$x = factor(ggpredictions$x)
+levels(ggpredictions$x) = c("E", "H")
+colnames(ggpredictions)[c(1,6,7,8)] =c("Diff", "Rating", "Gender", "Base_smiley")
+colnames(ggpredictions)[c(1,6,7)] =c("Diff", "Rating", "Gender")
+ggpredictions
+
+ggplot(ggpredictions, aes(x = Rating, y = predicted)) + geom_point(aes(color = Diff), position =position_dodge(width = 0.5)) + geom_errorbar(aes(ymin = conf.low, ymax = conf.high, color = Diff), position = position_dodge(width = 0.5), width = 0.3) + theme_minimal() +facet_wrap(.~Gender) #+  scale_color_manual(values = cbPalette[2:3])
+
+ggplot(ggpredictions, aes(x = Rating, y = predicted)) + geom_point(aes(color = Diff), position =position_dodge(width = 0.5)) + geom_errorbar(aes(ymin = conf.low, ymax = conf.high, color = Diff), position = position_dodge(width = 0.5), width = 0.3) + theme_minimal()# +facet_wrap(~Gender) #+  scale_color_manual(values = cbPalette[2:3])
+```
+
+
+
+# Bayesian Modeling rating 
+
+
+```{r Null FC}
+r_fc_0_p <- brm(
+  formula = Rating_fc ~ 1 + (1|ID), 
+  data = data_fcrating,
+  family = cumulative("logit"), 
+  sample_prior = "only", 
+  chains = 4, 
+  cores = 2
+) 
+
+pp_check(r_fc_0_p, ndraws = 100)
+plot(r_fc_0_p)
+
+r_fc_0 <- brm(
+  formula = Rating_fc ~ 1 + (1|ID), 
+  data = data_fcrating,
+  family = cumulative("logit"), 
+  sample_prior = T, 
+  chains = 4, 
+  cores = 2
+) 
+
+pp_check(r_fc_0, ndraws = 100)
+plot(r_fc_0)
+
+summary(r_fc_0)
+```
+
+```{r Diff FC}
+r_difffc_p <- brm(
+  formula = Rating_fc ~ 1 + Diff + (1|ID), 
+  data = data_fcrating,
+  prior = beta_priors,
+  family = cumulative("logit"), 
+  sample_prior = "only", 
+  chains = 4, 
+  cores = 2
+) 
+
+pp_check(r_difffc_p, ndraws = 100)
+plot(r_difffc_p)
+
+r_difffc <- brm(
+  formula = as.numeric(Rating_fc) ~ 1 + Diff + (1|ID), 
+  data = data_fcrating1,
+  prior = beta_priors,
+  family = cumulative("logit"), 
+  sample_prior = T, 
+  chains = 4, 
+  cores = 2
+) 
+
+pp_check(r_difffc, ndraws = 100)
+plot(r_difffc)
+
+summary(r_difffc)
+```
+
+
+```{r}
+posterior_draws_r_difffc<- as_draws_df(r_difffc)
+
+ggplot(posterior_draws_r_difffc) +
+  geom_density(aes(prior_b), fill="steelblue", color="black",alpha=0.6) +
+  geom_density(aes(`b_DiffH`), fill="#FC4E07", color="black",alpha=0.6) + 
+  xlab('b') +
+  theme_classic()
+```
+
+```{r}
+conditional_effects(r_difffc, "Diff", categorical = TRUE)
+
+hypothesis(r_difffc, "DiffH > 0")
+```
+
+```{r Diff x choice FC}
+r_fc_diffxchoice_p <- brm(
+  formula = Rating_fc ~ 1 + Diff*Pref_trial + (1|ID), 
+  data = data_fcrating,
+  prior = beta_priors,
+  family = cumulative("logit"), 
+  sample_prior = "only", 
+  chains = 4, 
+  cores = 2
+) 
+
+pp_check(r_fc_diffxchoice_p, ndraws = 100)
+plot(r_difffc_p)
+
+r_fc_diffxchoice <- brm(
+  formula = Rating_fc ~ 1 + Diff*Pref_trial + (1|ID), 
+  data = data_fcrating,
+  prior = beta_priors,
+  family = cumulative("logit"), 
+  sample_prior = T, 
+  chains = 4, 
+  cores = 2
+) 
+
+pp_check(r_difffc, ndraws = 100)
+plot(r_difffc)
+
+summary(r_fc_diffxchoice)
+```
+
+```{r}
+
+conditional_effects(r_fc_diffxchoice, "Diff:Pref_trial")#, categorical = TRUE)
+
+hypothesis(r_fc_diffxchoice, "DiffH > 0")
+```
+
+
+```{r}
+set.seed(1234)
+
+```
+
+We model the null model to check the model fit of standard priors and we include ID as a random intercept to account for the dependence of datapoints within participants. Since the puzzles vary between participants it will not make sense to include puzzle_no as a random intercept. If fatigue/boredom or learning affects the results over time, puzzle_no should be modeled as a fixed effect.
+
+```{r null model}
+#Null model
+r_0_p <- brm(
+  formula = Rating ~ 1 + (1|ID), 
+  data = data_rating, 
+  family = cumulative("logit"), #logit because the latent variable Y is expected to be non-normal, since children tend to rate more positively 
+  sample_prior = "only", 
+  chains = 4, 
+  cores = 2
+) 
+
+pp_check(r_0_p, ndraws = 100)
+plot(r_0_p)
+
+r_0 <- brm(
+  formula = Rating ~ 1 + (1|ID), 
+  data = data_rating, 
+  family = cumulative("logit"), 
+  sample_prior = T, 
+  chains = 4, 
+  cores = 2
+) 
+
+pp_check(r_0, ndraws = 100)
+
+plot(r_0)
+```
+
+The null model converges fine with Rhat at 1.00 and good bulk and tail effective sample size. No warnings and both the prior predictive checks and posterior predictive checks looks fine. The same with the caterpilar plots, seems like the model explored the space fine. Therefore we are going with the default priors for the intercept. 
+
+##Adding fixed effects 
+
+Starting simple, we first add the Diff variable because we are interested in discovering whether there are differences between the Hard and the Easy condition. 
+We are setting a very weak prior for the beta estimates. 
+
+```{r}
+beta_priors <- c(prior(normal(0,2), class = b))
+```
+
+```{r Diff model}
+r_diff_p <- brm(
+  formula = Rating ~ 1 + Diff + (1|ID), 
+  data = data_rating,
+  prior = beta_priors,
+  family = cumulative("logit"), 
+  sample_prior = "only", 
+  chains = 4, 
+  cores = 2
+) 
+
+pp_check(r_diff_p, ndraws = 100)
+plot(r_diff_p)
+
+r_diff <- brm(
+  formula = Rating ~ 1 + Diff + (1|ID), 
+  data = data_rating,
+  prior = beta_priors,
+  family = cumulative("logit"), 
+  sample_prior = T, 
+  chains = 4, 
+  cores = 2
+)
+
+pp_check(r_diff, ndraws = 100)
+plot(r_diff)
+
+summary(r_diff)
+```
+
+All looks fine again, no issues to account for. 
+```{r}
+#checking to see how much our weak prior informes the posterior distribution
+
+#Extract posterior samples
+posterior_draws_r_diff <- as_draws_df(r_diff)
+
+ggplot(posterior_draws_r_diff) +
+  geom_density(aes(prior_b), fill="steelblue", color="black",alpha=0.6) +
+  geom_density(aes(b_DiffH), fill="#FC4E07", color="black",alpha=0.6) + 
+  xlab('b') +
+  theme_classic()
+```
+The prior doesn't seem to influence the posterior a lot, but is appropriately weak and informative. Making the model converge fine. 
+
+```{r}
+conditional_effects(r_diff, "Diff", categorical = TRUE)
+```
+
+
+###Adding fixed effects to account for systematic variance outside of the condition
+Now we can add age, gender, time, puzzle number, base smiley and such to see what can have an effect on ratings.?? SHOULD THEY BE SCALED?  
+```{r Diff x Base smiley}
+r_diffxbase_p <- brm(
+  formula = Rating ~ 1 + Diff*Base_smiley + (1|ID), 
+  data = data_rating,
+  prior = beta_priors,
+  family = cumulative("logit"), 
+  sample_prior = "only", 
+  chains = 4, 
+  cores = 2
+) 
+
+pp_check(r_diff_p, ndraws = 100)
+plot(r_diff_p)
+
+r_diffxbase <- brm(
+  formula = Rating ~ 1 + Diff*Base_smiley  + (1|ID), 
+  data = data_rating,
+  prior = beta_priors,
+  family = cumulative("logit"), 
+  sample_prior = T, 
+  chains = 4, 
+  cores = 2
+)
+
+pp_check(r_diff, ndraws = 100)
+plot(r_diff)
+
+summary(r_diffxbase)
+```
+
+```{r Diff x Pref Trial (Choice)}
+r_diffxchoice_p <- brm(
+  formula = Rating ~ 1 + Diff*Pref_trial + (1|ID), 
+  data = data_rating,
+  prior = beta_priors,
+  family = cumulative("logit"), 
+  sample_prior = "only", 
+  chains = 4, 
+  cores = 2
+) 
+
+pp_check(r_diff_p, ndraws = 100)
+plot(r_diff_p)
+
+r_diffxchoice <- brm(
+  formula = Rating ~ 1 + Diff*Pref_trial  + (1|ID), 
+  data = data_rating,
+  prior = beta_priors,
+  family = cumulative("logit"), 
+  sample_prior = T, 
+  chains = 4, 
+  cores = 2
+)
+
+pp_check(r_diff, ndraws = 100)
+plot(r_diff)
+
+summary(r_diffxchoice)
+```
+
+```{r}
+posterior_draws_r_diffxchoice <- as_draws_df(r_diffxchoice)
+
+ggplot(posterior_draws_r_diffxchoice) +
+  geom_density(aes(prior_b), fill="steelblue", color="black",alpha=0.6) +
+  geom_density(aes(`b_DiffH`), fill="#FC4E07", color="black",alpha=0.6) + 
+  xlab('b') +
+  theme_classic()
+
+ggplot(posterior_draws_r_diffxchoice) +
+  geom_density(aes(prior_b), fill="steelblue", color="black",alpha=0.6) +
+  geom_density(aes(`b_DiffH:Pref_trialH`), fill="#FC4E07", color="black",alpha=0.6) + 
+  xlab('b') +
+  theme_classic()
+
+ggplot(posterior_draws_r_diffxchoice) +
+  geom_density(aes(prior_b), fill="steelblue", color="black",alpha=0.6) +
+  geom_density(aes(`b_Pref_trialH`), fill="#FC4E07", color="black",alpha=0.6) + 
+  xlab('b') +
+  theme_classic()
+```
+
+```{r}
+conditional_effects(r_diffxchoice, "Diff:Pref_trial", conditions = TRUE)
+
+plot(conditional_effects(r_diffxchoice), categorical = TRUE)
+```
+```{r}
+# Create a small new dataset with just the difficulty levels
+new_data <- tibble(Diff = c("E", "H"))
+
+
+preds <- add_epred_draws(r_difffc, newdata = new_data, re_formula = NA)  # re_formula = NA = population-level only
+
+```
+
+```{r}
+preds %>%
+  group_by(Diff, .category) %>%
+  mean_qi(.epred) %>%
+  ggplot(aes(x = .category, y = .epred, fill = Diff)) +
+  geom_col(position = "dodge") +
+  geom_errorbar(aes(ymin = .lower, ymax = .upper), 
+                position = position_dodge(width = 0.9), width = 0.2) +
+  labs(
+    x = "Enjoyment Rating",
+    y = "Predicted Probability",
+    fill = "Difficulty",
+    title = "Predicted Enjoyment Ratings by Puzzle Difficulty"
+  ) +
+  theme_minimal()
+
+```

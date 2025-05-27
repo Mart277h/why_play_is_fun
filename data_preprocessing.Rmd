@@ -16,15 +16,6 @@ df <- read_excel("data_for_analysis/Data3.xlsx")
 
 #Functions
 
-```{r function forced choice make numeric}
-make_fc_num <- function(df) {
-  df[df == "H"] <- 1 
-  df[df == "E"] <- -1
-  df[is.na(df)] <- 0
-  return(df)
-}
-```
-
 ```{r function make df as.numeric}
 as_num <- function(df)  {
   df <- as.numeric(df)
@@ -34,6 +25,7 @@ as_num <- function(df)  {
 #Make dataframe ready for linear modelling
 - part 1 and part 2 
 ```{r part 1 function for cleaning data per trial}
+#Make function for making the dataframe in long format for trial and also adding puzzle number as a variable.
 
 addtrial <- function(df, trial) {
   t1 <- ifelse(trial == 1, "first", ifelse(trial == 2, "second", ifelse(trial == 3, "third", ifelse(trial == 4, "fourth", "x"))))
@@ -72,18 +64,20 @@ addtrial <- function(df, trial) {
 ```{r part 2 run through all 4 trials}
 df_list <- list()
 
-# Loop through trials 1 to 4
+#Loop through trials 1 to 4
 for (i in 1:4) {
   df_list[[i]] <- addtrial(df, i)
 }
 
-# Combine all dataframes
+#Combine all dataframes
 final_df <- do.call(rbind, df_list)
 
 final_df <- final_df %>% mutate_at(c("Rating", "Base_smiley", "Time"), as_num)
 ```
 
 ```{r}
-#save dataframe 
+#Save dataframe 
+write.csv(final_df, "data_for_analysis/why_play_is_fun_data2.csv")
+
 ```
 

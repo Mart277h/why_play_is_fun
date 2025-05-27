@@ -1,0 +1,179 @@
+---
+title: "Experimental design analysis"
+author: "Martine Lind Jensen"
+date: "2025-04-25"
+output: html_document
+---
+# Experimental desing analaysis 
+
+In the experiment there is a new smiley face rating scale used. This markdown analyses how well the participant used the scaled. This is a variability analysis of how many ratings each participant used.This markdown also tests for confounding variables such as puzzles. 
+
+```{r}
+pacman::p_load(tidyverse, lmerTest, ggpubr, RColorBrewer, wesanderson )
+```
+
+```{r}
+data <- read_csv("data_for_analysis/why_play_is_fun_data2.csv") %>% dplyr::select(-c("...1"))
+```
+
+```{r}
+smiley_rating_data <- data %>% 
+  dplyr::select(-c("Forced_choice_trial")) %>%
+  filter(Time != 101) %>% #removing the row with the fifth puzzle
+  #filter(ID %in% trial3list) %>% #Cant get it to work.. 
+  #drop_na() %>% 
+  group_by(ID) %>%
+  #group_by(Puzzle_no) %>%
+  summarise(n_unique_ratings = n_distinct(Rating), 
+            n_completed_puzzles = n_distinct(Puzzle_no)) %>% 
+  mutate(rating_per_puzzle = n_unique_ratings/n_completed_puzzles)
+
+```
+
+
+```{r normality check}
+shapiro.test(smiley_rating_data$rating_per_puzzle) #says that it is significantly different thought the plot shows approximately normality. The data is also integers, doesnt work well with those
+
+ggqqplot(smiley_rating_data$rating_per_puzzle, ylab = "rating per puzzle",
+         ggtheme = theme_minimal())
+```
+
+```{r}
+t5 <- t.test(smiley_rating_data$rating_per_puzzle, mu = 0.5,
+              alternative = "greater")
+
+t2.5 <- t.test(smiley_rating_data$rating_per_puzzle, mu = 0.25,
+              alternative = "greater")
+
+t7.5 <- t.test(smiley_rating_data$rating_per_puzzle, mu = 0.75,
+              alternative = "greater")
+```
+
+
+```{r Finished plots}
+data %>% filter(Puzzle_no == 1) %>% drop_na(Base_smiley) %>% ggplot(aes(factor(Base_smiley))) + 
+  geom_bar(position = "stack", aes(fill = factor(Base_smiley))) + 
+  #theme_minimal() + 
+  #scale_fill_brewer(palette="Pastel2") +   
+  scale_fill_manual(values=wes_palette(n=5, name="Darjeeling1")) + 
+  theme_pubclean() + 
+  theme(legend.position = "none") +
+  ggtitle("General Enjoyment Ratings of Puzzles") + 
+  xlab("Rating") + 
+  ylab("Count") + 
+  scale_y_continuous(limits = c(0,15), breaks = 1:15)
+
+
+smiley_rating_data %>% ggplot(aes(rating_per_puzzle)) + 
+  #geom_bar(position = "stack", fill = "#5BBCD6") + 
+  geom_bar(position = "stack", aes(fill = factor(n_completed_puzzles)), width = 0.1) + 
+  facet_wrap(.~n_completed_puzzles)+ 
+  theme_pubclean()+ 
+  scale_fill_manual(values=wes_palette(n=4, name="Darjeeling1")) + 
+  theme(legend.position = "none") +
+  ggtitle("Unique Ratings per Number of Completed Puzzles") + 
+  xlab("Percentage") + 
+  xlim(0, NA)+
+  ylab("Count")
+
+data %>% drop_na(Rating) %>% mutate(ID = as.factor(ID), ID= as.numeric(ID)) %>% 
+  ggplot(aes(factor(Rating), fill= factor(Rating))) +
+    geom_bar(position = "stack") + 
+    facet_wrap(.~ID) + 
+    scale_fill_manual(values=wes_palette(n=5, name="Darjeeling1")) + 
+    theme_pubclean()+ 
+    xlab("Rating") + 
+    ylab("Count") + 
+    theme(legend.position = "none") + 
+    ggtitle("Distribution of Ratings per Participant")
+```
+
+## Confound analysis 
+
+```{r}
+
+#bag color of hard
+bag_color <- readxl::read_xlsx("data_for_analysis/bag_color.xlsx", col_names = c("ID", "Color"))
+
+confound_data <- merge(data, bag_color) %>% drop_na(Time)
+```
+
+```{r}
+hist(confound_data$Time)
+#using logtransformation in model
+hist(log(confound_data$Time))
+```
+
+```{r}
+color <- lmer(log(Time) ~ 1 + Color +  (1|ID), data = confound_data, REML = FALSE)
+
+plot(color)
+
+qqnorm(resid(color))
+
+
+diff_c <- lmer(log(Time) ~ 1 + Diff +  (1|ID), data = confound_data, REML = FALSE)
+
+plot(diff_c)
+
+qqnorm(resid(diff_c))
+
+```
+
+```{r}
+ggplot(confound_data, aes(Color, Time)) + 
+  geom_boxplot()
+
+ggplot(confound_data, aes(Diff, Time)) + 
+  geom_boxplot()
+```
+
+
+## Code trash 
+```{r}
+data %>% filter(Puzzle_no == 1) %>% drop_na(Base_smiley) %>% ggplot(aes(factor(Base_smiley))) + 
+  geom_bar(position = "stack", aes(fill = factor(Base_smiley))) + 
+  #theme_minimal() + 
+  #scale_fill_brewer(palette="Pastel2") + 
+  scale_fill_manual(values=wes_palette(n=5, name="Moonrise3")) + 
+  theme_pubclean()
+
+
+
+data_rating %>% group_by(Diff) %>% ggplot(aes(Rating)) + 
+  geom_bar(position = "stack",aes(color =Diff)) + 
+  facet_wrap(.~Puzzle_no) + 
+  scale_fill_manual(values=wes_palette(n=5, name="Moonrise3")) + 
+  theme_pubr()
+
+smiley_rating_data %>% ggplot(aes(n_unique_ratings)) + 
+  #geom_bar(position = "stack", fill = "#5BBCD6") + 
+  geom_bar(position = "stack", aes(fill = factor(n_completed_puzzles))) + 
+  facet_wrap(.~n_completed_puzzles)+ 
+  theme_pubclean()+ 
+  scale_fill_manual(values=wes_palette(n=4, name="Darjeeling1")) + 
+  theme(legend.position = "none") +
+  ggtitle("Unique ratings per number of completed puzzles") + 
+  xlab("Percentage") + 
+  xlim(0, NA)+
+  ylab("Count")# + 
+  #scale_y_continuous(limits = c(0,7), breaks = 1:7)
+  #scale_x_continuous(limits = c(0.00,1.00), breaks = 0:1.00)
+
+
+
+data %>% drop_na(Rating) %>% ggplot(aes(factor(Rating))) +
+  geom_bar(position = "stack", aes(fill= factor(ID))) + 
+  #facet_wrap(.~ID) + 
+  #scale_fill_manual(values=wes_palette(n=30, name="Darjeeling1")) + 
+  theme_pubclean()
+```
+
+```{r colors of wes palette}
+pal <- wes_palette(10, name = "Darjeeling1", type = "continuous")
+unclass(pal)
+text(x=seq_along(pal), y=.75, labels=pal, srt=90, col='black')
+pal
+```
+
+
